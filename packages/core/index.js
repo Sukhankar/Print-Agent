@@ -10,6 +10,7 @@ const { RawPrinterDriver }   = require('./drivers/RawPrinterDriver');
 const { TsplPrinterDriver }  = require('./drivers/TsplPrinterDriver');
 const { EscPosPrinterDriver } = require('./drivers/EscPosPrinterDriver');
 const { AuthManager }        = require('./auth/AuthManager');
+const { JobQueue }           = require('./queue/JobQueue');
 
 module.exports = {
   PrinterRegistry,
@@ -17,4 +18,5 @@ module.exports = {
   TsplPrinterDriver,
   EscPosPrinterDriver,
   AuthManager,
+  JobQueue,
 };
