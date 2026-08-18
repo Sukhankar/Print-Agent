@@ -2,3 +2,7 @@ node_modules/
 logs/
 .env
 npm-debug.log*
+.auth_vault
+printers.json
+jobs.json
+
