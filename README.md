@@ -1,11 +1,12 @@
-# JP-POS Print Agent
+# Universal Print Agent
 
-A lightweight, self-hosted Node.js background service that runs on a **store's counter PC** and prints raw TSPL commands to a locally-connected USB thermal barcode printer.
+A lightweight, self-hosted Node.js background service and package that runs on a local host PC or counter machine and prints raw printer commands (TSPL, ESC/POS, ZPL) directly to connected USB thermal barcode and receipt printers.
 
-- **No OS print dialog** — raw bytes go directly to the printer driver queue (Windows) or device file (Linux).
+- **No OS print dialog** — raw bytes go directly to the printer driver queue (Windows WinSpool RAW) or device file (Linux `/dev/usb/lp*`).
 - **No `window.print()`** anywhere.
-- **No third-party cloud print services** — fully self-hosted.
-- Reachable from a browser on the same PC (`http://localhost:9200`) or from the central JP-POS server via a **Cloudflare Tunnel**.
+- **No third-party cloud print subscriptions** — fully self-hosted, offline-capable, and private.
+- **Universal compatibility** — easily integrates with any web frontend (React, Vue, Next.js, HTML/JS), desktop app (Electron), or central backend via standard REST APIs.
+- **Distributed as a Node package** — can be embedded into Node.js applications or executed as a standalone CLI / background service daemon.
 
 ---
 
@@ -13,15 +14,15 @@ A lightweight, self-hosted Node.js background service that runs on a **store's c
 
 1. [Architecture Overview](#architecture-overview)
 2. [Prerequisites](#prerequisites)
-3. [Installation](#installation)
+3. [Installation & Setup](#installation--setup)
 4. [Environment Variables](#environment-variables)
 5. [Windows RAW Printer Setup](#windows-raw-printer-setup)
 6. [Linux USB Device Permissions (udev)](#linux-usb-device-permissions-udev)
 7. [Running the Agent](#running-the-agent)
 8. [PM2 Process Management & Boot Persistence](#pm2-process-management--boot-persistence)
 9. [API Reference](#api-reference)
-10. [Verify the Agent is Working (curl tests)](#verify-the-agent-is-working-curl-tests)
-11. [Cloudflare Tunnel Integration](#cloudflare-tunnel-integration)
+10. [Verify the Agent is Working (curl / PowerShell)](#verify-the-agent-is-working-curl--powershell)
+11. [Cloudflare Tunnel Integration (Remote Printing)](#cloudflare-tunnel-integration-remote-printing)
 12. [Troubleshooting](#troubleshooting)
 13. [Log Files](#log-files)
 
@@ -30,15 +31,15 @@ A lightweight, self-hosted Node.js background service that runs on a **store's c
 ## Architecture Overview
 
 ```
-Central JP-POS Server
+Any Web App / POS Frontend / Central Server
         │
-        │  POST /print  (via Cloudflare Tunnel + Access token)
+        │  POST /print  (HTTP REST API or via Secure Tunnel)
         ▼
 ┌───────────────────────────────────┐
-│      jp-pos-print-agent           │   ← This service (print-agent/)
+│       Universal Print Agent       │   ← Local Node.js service / package
 │  Express   :9200  127.0.0.1       │
 └────────────────┬──────────────────┘
-                 │ raw TSPL bytes
+                 │ raw command bytes (TSPL / ESC-POS / ZPL)
         ┌────────▼────────┐
         │                 │
    [Windows]          [Linux]
@@ -47,14 +48,14 @@ Central JP-POS Server
     WritePrinter)   file write)
         │                 │
         ▼                 ▼
-   USB Thermal Printer (TSC / Xprinter / Zebra)
+   USB Thermal Printer (TSC / Xprinter / Zebra / Epson)
 ```
 
 **Security layers (in order):**
 
-1. **Cloudflare Access** — service-token authentication on the Cloudflare Tunnel (outer layer, handles all remote auth). This agent does **not** implement its own auth and **must not** be the sole security layer.
-2. **Localhost binding** — server binds to `127.0.0.1` by default; LAN access requires explicit tunnel configuration.
-3. **CORS** — restricts browser-originated calls to `ALLOWED_ORIGIN` only.
+1. **Localhost binding** — server binds to `127.0.0.1` by default so it is only accessible locally unless remote access is explicitly configured.
+2. **CORS control** — restricts browser-originated requests to configured `ALLOWED_ORIGIN` domains.
+3. **Optional Secure Tunneling** — for remote printing across networks/subnets (e.g. Cloudflare Tunnel with service-token authentication).
 
 ---
 
@@ -62,43 +63,49 @@ Central JP-POS Server
 
 | Requirement | Minimum version |
 |---|---|
-| Node.js | 18.0.0 |
-| npm | 9.0.0 |
+| Node.js | 18.0.0+ |
+| npm | 9.0.0+ |
 | PM2 (global) | 5.x (`npm i -g pm2`) |
 | PowerShell | 5.1+ (Windows — pre-installed on Win 7+) |
 
 ---
 
-## Installation
+## Installation & Setup
+
+### As a Standalone Service / Project
 
 ```bash
-# 1. Navigate to the print-agent directory
+# 1. Clone or navigate to the print-agent repository
 cd print-agent
 
-# 2. Install dependencies (only express + cors)
+# 2. Install dependencies
 npm install
 
-# 3. (Optional) Create a .env file to override defaults — see Environment Variables
-cp .env.example .env   # if provided, else create manually
+# 3. Create a .env file to configure settings (optional)
+cp .env.example .env
+```
+
+### As a Node Package
+
+```bash
+# Install as a dependency in your Node.js project
+npm install print-agent
 ```
 
 ---
 
 ## Environment Variables
 
-Create a `.env` file in the `print-agent/` directory (or export them to the shell before starting PM2):
+Create a `.env` file in the root directory (or export them into your shell environment):
 
 ```env
 # TCP port the agent listens on (default: 9200)
 PRINT_AGENT_PORT=9200
 
-# Bind address — keep this as 127.0.0.1 unless you have a specific reason
-# to expose the agent on the LAN (Cloudflare Tunnel handles remote exposure)
+# Bind address — keep as 127.0.0.1 unless LAN access is specifically required
 PRINT_AGENT_HOST=127.0.0.1
 
-# The JP-POS web app origin allowed to call this agent from a browser
-# on the same PC.  Remote calls from the central server (via Cloudflare Tunnel)
-# do not send an Origin header and are always permitted.
+# Web app origin allowed to trigger prints from browser clients
 ALLOWED_ORIGIN=http://localhost:3000
 
 # Directory where rotating daily log files are written (default: ./logs)
@@ -112,24 +119,24 @@ MAX_LOG_DAYS=14
 
 ## Windows RAW Printer Setup
 
-The Windows print path uses WinSpool's `WritePrinter` API with `DataType = "RAW"`, which sends bytes directly to the printer without any GDI rasterisation or dialog.
+The Windows print path uses WinSpool's `WritePrinter` API with `DataType = "RAW"`, sending bytes directly to the printer spooler without GDI rasterisation or print dialogs.
 
 **The printer must be configured as a RAW-capable queue:**
 
-### Option A — "Generic / Text Only" driver (recommended for most TSC/Xprinter labels)
+### Option A — "Generic / Text Only" driver (recommended for TSC/Xprinter/Zebra labels)
 
 1. Open **Control Panel → Devices and Printers**.
 2. Click **Add a printer** → **Add a local printer or network printer with manual settings**.
 3. Select the correct USB port (e.g. `USB001`).
 4. Choose driver: **Generic → Generic / Text Only**.
-5. Give it a recognisable name (e.g. `TSC-Label-Printer`).
-6. **Do not share** the printer unless you need to.
+5. Give it a recognisable name (e.g. `Thermal-Label-Printer`).
+6. Do not share the printer unless needed on local network.
 
 ### Option B — Manufacturer driver + RAW queue
 
-If you've already installed the manufacturer's driver (e.g. TSC Bartender):
+If using a manufacturer driver (e.g., TSC Bartender or Seagull driver):
 
-1. **Control Panel → Devices and Printers** → right-click your printer → **Printer properties**.
+1. Open **Control Panel → Devices and Printers** → right-click your printer → **Printer properties**.
 2. Go to the **Advanced** tab.
 3. Ensure **Spool print documents** is selected and **Start printing immediately** is checked.
 4. Click **Print Processor…** → set **Default data type** to `RAW`.
@@ -149,13 +156,13 @@ Get-Printer | Select-Object Name, DriverName, PortName
 
 ## Linux USB Device Permissions (udev)
 
-By default, `/dev/usb/lp0` (and similar) are owned by `root:lp` with permissions `660`.  Running the print agent as a non-root user requires one of:
+By default, `/dev/usb/lp0` (and similar) are owned by `root:lp` with permissions `660`. Running the print agent as a non-root user requires permission adjustments:
 
 ### Method 1 — Add service user to `lp` group (simplest)
 
 ```bash
 sudo usermod -aG lp <your-service-user>
-# Log out and back in, or restart the PM2 daemon:
+# Log out and back in, or restart PM2 daemon:
 pm2 kill
 pm2 resurrect
 ```
@@ -167,25 +174,26 @@ Create `/etc/udev/rules.d/99-usb-printer.rules`:
 ```udev
 # Allow all users in the 'lp' group to read/write USB printer devices
 SUBSYSTEM=="usb", ATTRS{idVendor}=="0519", MODE="0664", GROUP="lp"
-# For TSC printers, idVendor is 0x0519.  Find yours via: lsusb
+# Note: For TSC printers, idVendor is 0x0519. Check yours via: lsusb
+
 # Generic rule for all USB printers:
 SUBSYSTEM=="usbmisc", KERNEL=="lp*", MODE="0664", GROUP="lp"
 ```
 
-Apply the new rule without rebooting:
+Apply the rule without rebooting:
 
 ```bash
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
 
-### Verify the device is accessible
+### Verify device accessibility
 
 ```bash
 # Find the device
 ls -la /dev/usb/
 
-# Test raw write (should print garbage but confirms permissions work)
+# Test raw write (should print or feed page to confirm permissions)
 echo "TEST" > /dev/usb/lp0
 ```
 
@@ -196,15 +204,13 @@ echo "TEST" > /dev/usb/lp0
 ### Development (direct node)
 
 ```bash
-cd print-agent
 node server.js
-# → [jp-pos-print-agent] Listening on http://127.0.0.1:9200  platform=linux
+# → [print-agent] Listening on http://127.0.0.1:9200 platform=win32
 ```
 
 ### Production (PM2)
 
 ```bash
-cd print-agent
 pm2 start ecosystem.config.js
 pm2 status   # confirm "print-agent" shows "online"
 ```
@@ -218,21 +224,20 @@ pm2 status   # confirm "print-agent" shows "online"
 #### Linux
 
 ```bash
-# Generate and execute the startup script (PM2 will print a command to run — do so)
-pm2 startup systemd    # or 'pm2 startup' and follow printed instructions
-# Example output: sudo env PATH=... pm2 startup systemd -u <user> --hp /home/<user>
-# → Run the printed command with sudo
+# Generate and execute startup script
+pm2 startup systemd
+# Run the command generated by pm2 startup with sudo
 
-# Save the current process list so it's restored on reboot
+# Save process list for auto-restore on reboot
 pm2 save
 ```
 
 #### Windows
 
-PM2 uses the `pm2-windows-startup` module or the built-in Windows startup script:
+Using `pm2-windows-startup` or Windows Task Scheduler:
 
 ```powershell
-# Install PM2 Windows startup helper (one-time)
+# Install PM2 Windows startup helper
 npm install -g pm2-windows-startup
 pm2-startup install
 
@@ -240,23 +245,21 @@ pm2-startup install
 pm2 save
 ```
 
-Alternatively, create a Scheduled Task that runs `pm2 resurrect` on login:
+Alternatively, create a Task Scheduler entry:
 
 ```powershell
-# Create a Windows Task Scheduler entry (run as SYSTEM, trigger: At startup)
 $action  = New-ScheduledTaskAction -Execute "npm" -Argument "exec pm2 resurrect" -WorkingDirectory "C:\path\to\print-agent"
 $trigger = New-ScheduledTaskTrigger -AtStartup
-Register-ScheduledTask -Action $action -Trigger $trigger -TaskName "JP-POS-PrintAgent" -RunLevel Highest -Force
+Register-ScheduledTask -Action $action -Trigger $trigger -TaskName "Universal-PrintAgent" -RunLevel Highest -Force
 ```
 
-### Everyday PM2 commands
+### Essential PM2 commands
 
 ```bash
-pm2 status              # view all processes
-pm2 logs print-agent    # tail live logs
-pm2 restart print-agent
-pm2 stop    print-agent
-pm2 delete  print-agent  # remove from PM2 list
+pm2 status              # view running services
+pm2 logs print-agent    # view live output logs
+pm2 restart print-agent # restart service
+pm2 stop print-agent    # stop service
 ```
 
 ---
@@ -269,7 +272,7 @@ Base URL: `http://127.0.0.1:9200`
 
 ### `GET /health`
 
-Used by the central JP-POS server to verify the print agent is alive before dispatching a job.
+Verifies the print agent is running and accessible.
 
 **Response `200 OK`:**
 ```json
@@ -284,9 +287,18 @@ Used by the central JP-POS server to verify the print agent is alive before disp
 
 ### `GET /printers`
 
-Lists available printer identifiers for the current OS.  Use this during setup to find the correct `printerName` (Windows) or `devicePath` (Linux) without digging through OS settings.
+Lists available printers on the system. Use this to determine `printerName` (Windows) or `devicePath` (Linux).
 
 **Response `200 OK`:**
+```json
+{
+  "success": true,
+  "platform": "win32",
+  "printers": ["TSC TTP-244 Pro", "Generic / Text Only", "Receipt Printer"]
+}
+```
+
+On Linux:
 ```json
 {
   "success": true,
@@ -295,31 +307,22 @@ Lists available printer identifiers for the current OS.  Use this during setup t
 }
 ```
 
-On Windows:
-```json
-{
-  "success": true,
-  "platform": "win32",
-  "printers": ["TSC TTP-244 Pro", "Generic / Text Only", "Microsoft Print to PDF"]
-}
-```
-
 ---
 
 ### `POST /print`
 
-Sends a raw TSPL command string to the printer.
+Sends raw printer commands (TSPL / ESC-POS / ZPL) directly to the specified printer.
 
 **Request body:**
 ```json
 {
-  "tsplCommands": "SIZE 50 mm, 25 mm\nGAP 2 mm, 0 mm\nDIRECTION 1\nCLS\nTEXT 10,10,\"3\",0,1,1,\"Jain Plastic POS\"\nBARCODE 10,40,\"128\",50,1,0,2,2,\"890123456789\"\nTEXT 10,100,\"2\",0,1,1,\"MRP: RS. 499.00\"\nPRINT 1,1",
+  "tsplCommands": "SIZE 50 mm, 25 mm\nGAP 2 mm, 0 mm\nDIRECTION 1\nCLS\nTEXT 10,10,\"3\",0,1,1,\"UNIVERSAL PRINT AGENT\"\nBARCODE 10,40,\"128\",50,1,0,2,2,\"890123456789\"\nTEXT 10,100,\"2\",0,1,1,\"PRICE: $9.99\"\nPRINT 1,1",
   "printerName": "TSC TTP-244 Pro",
   "devicePath": "/dev/usb/lp0"
 }
 ```
 
-> **Note:** `printerName` is used on Windows; `devicePath` is used on Linux.  You can send both fields — the agent picks the correct one for the current OS automatically.
+> **Note:** `printerName` is used on Windows; `devicePath` is used on Linux. You can provide both — the agent selects the appropriate parameter for the host OS.
 
 **Success response `200 OK`:**
 ```json
@@ -333,33 +336,30 @@ Sends a raw TSPL command string to the printer.
 
 | HTTP | `error` message example | Cause |
 |---|---|---|
-| `400` | `tsplCommands is required…` | Missing/empty payload |
+| `400` | `tsplCommands is required…` | Payload missing or empty |
 | `400` | `printerName is required…` | Missing printer identifier |
-| `403` | `Permission denied writing to /dev/usb/lp0…` | Linux udev/group issue |
-| `422` | `Device not found: /dev/usb/lp0…` | USB cable unplugged |
-| `422` | `Printer "TSC" not found or not installed…` | Printer removed from Windows |
-| `503` | `Printer may be offline or busy…` | Paper jam, power off, etc. |
-| `500` | `Windows print error: …` | Unexpected WinSpool failure |
+| `403` | `Permission denied writing to /dev/usb/lp0…` | Linux permissions / udev issue |
+| `422` | `Device not found: /dev/usb/lp0…` | Disconnected or powered off printer |
+| `422` | `Printer "TSC" not found or not installed…` | Printer name mismatch on Windows |
+| `503` | `Printer may be offline or busy…` | Hardware error, paper jam, or offline state |
 
 ---
 
-## Verify the Agent is Working (curl tests)
+## Verify the Agent is Working (curl / PowerShell)
 
 ### Health check
 
 ```bash
 curl http://127.0.0.1:9200/health
-# → {"status":"ok","platform":"linux","uptime":12}
 ```
 
 ### List printers
 
 ```bash
 curl http://127.0.0.1:9200/printers
-# → {"success":true,"platform":"win32","printers":["TSC TTP-244 Pro"]}
 ```
 
-### Send a test print job (Linux)
+### Send test print job (Linux curl)
 
 ```bash
 curl -X POST http://127.0.0.1:9200/print \
@@ -368,10 +368,9 @@ curl -X POST http://127.0.0.1:9200/print \
     "tsplCommands": "SIZE 50 mm, 25 mm\nGAP 2 mm, 0 mm\nDIRECTION 1\nCLS\nTEXT 10,10,\"3\",0,1,1,\"TEST LABEL\"\nPRINT 1,1",
     "devicePath": "/dev/usb/lp0"
   }'
-# → {"success":true,"byteLength":96}
 ```
 
-### Send a test print job (Windows — PowerShell)
+### Send test print job (Windows PowerShell)
 
 ```powershell
 $body = @{
@@ -381,89 +380,65 @@ $body = @{
 
 Invoke-RestMethod -Method POST -Uri "http://127.0.0.1:9200/print" `
   -ContentType "application/json" -Body $body
-# → success byteLength
-#   ------- ----------
-#   True    96
 ```
 
 ---
 
-## Cloudflare Tunnel Integration
+## Cloudflare Tunnel Integration (Remote Printing)
 
-To allow the central JP-POS server to dispatch print jobs to a store's counter PC over the internet without opening firewall ports:
+To securely receive print jobs from cloud-hosted services or remote web apps over HTTPS without public port forwarding:
 
-1. **Install `cloudflared`** on the counter PC:
-   - Windows: [Download the MSI](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
+1. **Install `cloudflared`** on the counter/host PC:
+   - Windows: [Cloudflare Downloads](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
    - Linux: `curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared`
 
 2. **Authenticate and create a tunnel:**
    ```bash
    cloudflared tunnel login
-   cloudflared tunnel create jp-pos-store-01-printer
+   cloudflared tunnel create print-agent-tunnel
    ```
 
-3. **Configure the tunnel** (`~/.cloudflared/config.yml`):
+3. **Configure `~/.cloudflared/config.yml`:**
    ```yaml
    tunnel: <tunnel-id>
    credentials-file: /home/<user>/.cloudflared/<tunnel-id>.json
 
    ingress:
-     - hostname: store01-printer.yourdomain.com
+     - hostname: printer.yourdomain.com
        service: http://127.0.0.1:9200
      - service: http_status:404
    ```
 
-4. **Run `cloudflared` as a service** so it starts on boot:
+4. **Start as a service:**
    ```bash
-   # Linux (systemd)
-   cloudflared service install
-   systemctl enable cloudflared
-   systemctl start cloudflared
-
-   # Windows
    cloudflared service install
    ```
-
-5. **Protect the tunnel with Cloudflare Access** (Zero Trust dashboard):
-   - Create a service token for the JP-POS central server.
-   - Add an Access policy: only requests with a valid service token are allowed.
-   - The print agent does **not** need to verify the token itself — Cloudflare handles it at the edge.
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Likely Cause | Fix |
+| Symptom | Likely Cause | Solution |
 |---|---|---|
-| `"Device not found: /dev/usb/lp0"` | USB cable unplugged or printer off | Plug in printer, run `ls /dev/usb/` to confirm device appears |
-| `"Permission denied writing to /dev/usb/lp0"` | User not in `lp` group | `sudo usermod -aG lp <user>` then restart PM2 daemon |
-| `"OpenPrinter failed"` (Windows) | Printer name wrong or printer deleted | Run `GET /printers` to get the exact name |
-| `"StartDocPrinter returned 0"` | Print spooler stopped | `Restart-Service -Name Spooler` in PowerShell as admin |
-| `CORS error in browser console` | `ALLOWED_ORIGIN` mismatch | Set `ALLOWED_ORIGIN` to the exact origin shown in the browser |
-| Agent not reachable from central server | Cloudflare Tunnel not running | `systemctl status cloudflared` or check Cloudflare dashboard |
-| Labels print but content is garbled | TSPL command syntax issue | Validate with TSC label printing software first; confirm baud/encoding |
+| `"Device not found: /dev/usb/lp0"` | USB cable unplugged or printer powered off | Verify cable connection, run `ls /dev/usb/` |
+| `"Permission denied writing to /dev/usb/lp0"` | Service user missing `lp` group permissions | `sudo usermod -aG lp <user>` and restart service |
+| `"OpenPrinter failed"` (Windows) | Printer name mismatch | Query `GET /printers` for exact name |
+| `"StartDocPrinter returned 0"` | Windows Spooler service stopped | Run `Restart-Service Spooler` in PowerShell as Admin |
+| `CORS error in browser console` | `ALLOWED_ORIGIN` mismatch | Update `ALLOWED_ORIGIN` in `.env` to match client web app URL |
+| Label prints garbled output | Invalid command syntax or baud rate | Verify syntax against manufacturer specification (TSPL / ESC-POS / ZPL) |
 
 ---
 
 ## Log Files
 
-Log files are written to `./logs/` (configurable via `LOG_DIR`).
+Log files are saved to `./logs/` (configurable via `LOG_DIR`).
 
 | File | Contents |
 |---|---|
-| `print-agent-YYYY-MM-DD.log` | Application-level structured JSON log (one per day) |
-| `pm2-out.log` | PM2 stdout capture |
-| `pm2-err.log` | PM2 stderr capture |
-
-### Sample log line
-
-```json
-{"ts":"2026-07-27T05:18:32.411Z","level":"INFO","event":"print_success","target":"/dev/usb/lp0","byteLength":182,"durationMs":14}
-{"ts":"2026-07-27T05:18:45.001Z","level":"ERROR","event":"print_failed","target":"/dev/usb/lp0","code":"DEVICE_NOT_FOUND","error":"Device not found: /dev/usb/lp0. Is the USB printer plugged in?","durationMs":2}
-```
-
-Log files older than `MAX_LOG_DAYS` (default 14 days) are automatically deleted on agent startup.
+| `print-agent-YYYY-MM-DD.log` | Daily structured JSON application logs |
+| `pm2-out.log` | PM2 stdout logs |
+| `pm2-err.log` | PM2 stderr logs |
 
 ---
 
-*Part of the JP-POS multi-location POS/ERP platform.*
+*Universal Print Agent — Standalone, cross-platform thermal printing service & Node package.*
