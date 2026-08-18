@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "description": "Local USB thermal printer agent for JP-POS. Receives raw TSPL commands over HTTP and writes them directly to a USB printer — no GDI, no print dialog.",
   "main": "server.js",
+  "bin": {
+    "print-agent": "apps/cli/index.js"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "cli": "node apps/cli/index.js",
     "test": "node tests/core.test.js && node tests/protocol.test.js && node tests/auth.test.js && node tests/queue.test.js && node tests/sdk.test.js",
     "pm2:start": "pm2 start ecosystem.config.js",
     "pm2:stop": "pm2 stop print-agent",
