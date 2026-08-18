@@ -1,5 +1,5 @@
 /**
- * @jp-pos/print-agent-core
+ * @print-agent/core
  * Core drivers, printer registry, and hardware transport abstractions.
  */
 

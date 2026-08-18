@@ -1,6 +1,6 @@
 /**
  * tests/sdk.test.js
- * Test suite for @jp-pos/print-agent-sdk client library.
+ * Test suite for @print-agent/sdk client library.
  */
 
 'use strict';

@@ -1,5 +1,5 @@
 /**
- * PrintAgent.js — @jp-pos/print-agent-sdk
+ * PrintAgent.js — @print-agent/sdk
  * ─────────────────────────────────────────────────────────────────────────────
  * The official client SDK for interacting with the local or remote Print Agent service.
  */

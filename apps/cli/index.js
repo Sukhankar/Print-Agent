@@ -166,7 +166,7 @@ function checkPortAvailable(port, host) {
 
 function showHelp() {
   console.log(`
-JP-POS Print Agent CLI
+Universal Print Agent CLI
 
 Usage:
   print-agent doctor                 Run environment & hardware diagnostics
