@@ -1,6 +1,6 @@
 # Architecture Specification — Secure Print Agent
 
-**Package Scope:** `@jp-pos/print-agent`  
+**Package Scope:** `@universal-print-agent/core`  
 **Version:** `2.0.0-spec`  
 **Status:** Architecture Draft (Phase 0 & 1 Complete)
 

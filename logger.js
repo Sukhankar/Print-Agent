@@ -1,5 +1,5 @@
 /**
- * logger.js — Rotating file logger for jp-pos-print-agent
+ * logger.js — Rotating file logger for universal-print-agent
  * ─────────────────────────────────────────────────────────────────────────────
  * Writes structured JSON log lines to a daily-rotating file under LOG_DIR
  * (default: ./logs).  Old log files beyond MAX_LOG_DAYS are deleted on startup.

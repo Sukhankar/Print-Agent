@@ -1,7 +1,7 @@
 /**
- * server.js — JP-POS Print Agent
+ * server.js — Universal Print Agent
  * ─────────────────────────────────────────────────────────────────────────────
- * Lightweight Express HTTP server that accepts raw TSPL command strings and
+ * Lightweight Express HTTP server that accepts raw TSPL/ESC-POS command strings and
  * writes them directly to a USB thermal printer — no OS print dialog,
  * no window.print(), no GDI/driver rendering.
  *
@@ -210,7 +210,7 @@ app.listen(PORT, HOST, () => {
     platform: PLATFORM,
     allowedOrigin: ALLOWED_ORIGIN,
   });
-  console.log(`[jp-pos-print-agent] Listening on http://${HOST}:${PORT}  platform=${PLATFORM}`);
+  console.log(`[print-agent] Listening on http://${HOST}:${PORT}  platform=${PLATFORM}`);
 });
 
 // ─── Graceful shutdown ───────────────────────────────────────────────────────

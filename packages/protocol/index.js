@@ -1,5 +1,5 @@
 /**
- * @jp-pos/print-agent-protocol
+ * @print-agent/protocol
  * Protocol schemas, validation helpers, and TSPL sanitization rules.
  */
 

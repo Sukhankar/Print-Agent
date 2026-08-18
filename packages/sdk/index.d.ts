@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { PrinterInfo, PrintJob, PrintResult, PrinterFormat } from '@jp-pos/print-agent-types';
+import { PrinterInfo, PrintJob, PrintResult, PrinterFormat } from '@print-agent/types';
 
 export interface PrintAgentOptions {
   endpoint?: string;

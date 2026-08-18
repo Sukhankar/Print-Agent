@@ -1,6 +1,6 @@
 /**
- * @jp-pos/print-agent-types
- * Type definitions and contracts for the JP-POS Print Agent architecture.
+ * @print-agent/types
+ * Type definitions and contracts for the Universal Print Agent architecture.
  */
 
 'use strict';

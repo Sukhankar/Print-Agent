@@ -1,5 +1,5 @@
 /**
- * ecosystem.config.js — PM2 process definitions for jp-pos-print-agent
+ * ecosystem.config.js — PM2 process definitions for universal-print-agent
  *
  * Usage (run from the print-agent/ directory or the project root):
  *

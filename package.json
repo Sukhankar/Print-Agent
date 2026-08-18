@@ -1,7 +1,7 @@
 {
-  "name": "jp-pos-print-agent",
+  "name": "universal-print-agent",
   "version": "1.0.0",
-  "description": "Local USB thermal printer agent for JP-POS. Receives raw TSPL commands over HTTP and writes them directly to a USB printer — no GDI, no print dialog.",
+  "description": "Universal local USB thermal printer agent and Node package. Receives raw TSPL/ESC-POS commands over HTTP or JS SDK and writes them directly to USB thermal printers — no GDI, no print dialog.",
   "main": "server.js",
   "bin": {
     "print-agent": "apps/cli/index.js"

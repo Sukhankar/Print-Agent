@@ -1,7 +1,7 @@
 # Threat Model — Secure Print Agent
 
 **Document Version:** 1.0.0  
-**Scope:** `@jp-pos/print-agent` core service, CLI, SDK, and printer drivers.
+**Scope:** `universal-print-agent` core service, CLI, SDK, and printer drivers.
 
 ---
 

@@ -209,7 +209,7 @@ if (-not [WinSpool]::OpenPrinter($printerName, [ref]$hPrinter, [IntPtr]::Zero)) 
 }
 
 $docInfo       = New-Object WinSpool+DOCINFO
-$docInfo.pDocName    = 'JP-POS TSPL Label'
+$docInfo.pDocName    = 'Universal Print Job'
 $docInfo.pOutputFile = $null
 $docInfo.pDataType   = 'RAW'
 
