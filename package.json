@@ -6,6 +6,24 @@
   "bin": {
     "print-agent": "apps/cli/index.js"
   },
+  "exports": {
+    ".": "./server.js",
+    "./sdk": "./packages/sdk/index.js",
+    "./core": "./packages/core/index.js",
+    "./protocol": "./packages/protocol/index.js",
+    "./types": "./packages/types/index.js"
+  },
+  "files": [
+    "server.js",
+    "tsplUsbClient.js",
+    "logger.js",
+    "ecosystem.config.js",
+    "apps/",
+    "packages/",
+    "README.md",
+    "LICENSE",
+    "ARCHITECTURE.md"
+  ],
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
@@ -14,7 +32,8 @@
     "pm2:start": "pm2 start ecosystem.config.js",
     "pm2:stop": "pm2 stop print-agent",
     "pm2:restart": "pm2 restart print-agent",
-    "pm2:logs": "pm2 logs print-agent"
+    "pm2:logs": "pm2 logs print-agent",
+    "prepublishOnly": "npm test"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -23,7 +42,15 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "keywords": ["pos", "thermal-printer", "tspl", "usb-print", "barcode"],
-  "license": "UNLICENSED",
-  "private": true
+  "keywords": [
+    "pos",
+    "thermal-printer",
+    "tspl",
+    "escpos",
+    "usb-print",
+    "barcode",
+    "receipt-printer",
+    "print-agent"
+  ],
+  "license": "Apache-2.0"
 }
